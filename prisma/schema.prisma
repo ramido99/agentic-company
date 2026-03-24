@@ -1,0 +1,268 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "darwin-arm64", "linux-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipRole {
+  OWNER
+  MEMBER
+}
+
+enum WorkflowRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum AgentRole {
+  STRATEGIST
+  OPERATOR
+  REVIEWER
+}
+
+enum ArtifactType {
+  BRIEF
+  EXECUTION_PLAN
+  CHECKLIST
+  REVIEW
+}
+
+enum ArtifactStatus {
+  READY
+  APPROVED
+}
+
+model User {
+  id               String         @id @default(cuid())
+  name             String?
+  email            String?        @unique
+  emailVerified    DateTime?
+  image            String?
+  memberships      Membership[]
+  companies        Company[]      @relation("CompanyCreatedBy")
+  goals            Goal[]         @relation("GoalCreatedBy")
+  triggeredRuns    WorkflowRun[]  @relation("WorkflowRunTriggeredBy")
+  aiProviderSetting UserAIProviderSetting?
+  usageRecords     UsageRecord[]  @relation("UsageUser")
+  accounts         Account[]
+  sessions         Session[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model Workspace {
+  id                   String                  @id @default(cuid())
+  name                 String
+  slug                 String                  @unique
+  memberships          Membership[]
+  companies            Company[]
+  goals                Goal[]
+  workflowRuns         WorkflowRun[]
+  subscriptions        Subscription[]
+  usageRecords         UsageRecord[]           @relation("UsageWorkspace")
+  agentSkillAssignments AgentSkillAssignment[]
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+}
+
+// 에이전트별 스킬 배정 (워크스페이스 단위)
+model AgentSkillAssignment {
+  id          String    @id @default(cuid())
+  workspaceId String
+  agentId     String    // agent-catalog ID (e.g. "strategist-core")
+  skillId     String    // skill-catalog ID (e.g. "skill-pptx")
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, agentId, skillId])
+  @@index([workspaceId, agentId])
+}
+
+model Membership {
+  id               String         @id @default(cuid())
+  userId           String
+  workspaceId      String
+  role             MembershipRole @default(MEMBER)
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model Company {
+  id               String         @id @default(cuid())
+  workspaceId      String
+  createdById      String?
+  name             String
+  idea             String
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy        User?          @relation("CompanyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  goals            Goal[]
+  workflowRuns     WorkflowRun[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([workspaceId])
+}
+
+model Goal {
+  id               String         @id @default(cuid())
+  workspaceId      String
+  companyId        String
+  createdById      String?
+  title            String
+  task             String
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy        User?          @relation("GoalCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  workflowRuns     WorkflowRun[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([workspaceId])
+  @@index([companyId])
+}
+
+model WorkflowRun {
+  id               String            @id @default(cuid())
+  workspaceId      String
+  companyId        String
+  goalId           String
+  triggeredById    String?
+  task             String
+  status           WorkflowRunStatus @default(QUEUED)
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  goal             Goal              @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  triggeredBy      User?             @relation("WorkflowRunTriggeredBy", fields: [triggeredById], references: [id], onDelete: SetNull)
+  artifacts        Artifact[]
+  usageRecords     UsageRecord[]     @relation("UsageWorkflowRun")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  completedAt      DateTime?
+
+  @@index([workspaceId])
+  @@index([companyId])
+  @@index([goalId])
+}
+
+model Artifact {
+  id               String         @id @default(cuid())
+  workflowRunId    String
+  role             AgentRole
+  type             ArtifactType
+  title            String
+  summary          String
+  content          Json
+  status           ArtifactStatus
+  position         Int
+  workflowRun      WorkflowRun    @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+
+  @@index([workflowRunId])
+  @@unique([workflowRunId, position])
+}
+
+model UsageRecord {
+  id               String         @id @default(cuid())
+  workspaceId      String
+  userId           String?
+  workflowRunId    String?
+  metric           String
+  value            Int
+  metadata         Json?
+  workspace        Workspace      @relation("UsageWorkspace", fields: [workspaceId], references: [id], onDelete: Cascade)
+  user             User?          @relation("UsageUser", fields: [userId], references: [id], onDelete: SetNull)
+  workflowRun      WorkflowRun?   @relation("UsageWorkflowRun", fields: [workflowRunId], references: [id], onDelete: SetNull)
+  createdAt        DateTime       @default(now())
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([workflowRunId])
+}
+
+model UserAIProviderSetting {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  provider         String   @default("openai")
+  apiEndpoint      String
+  apiKeyEncrypted  String
+  defaultModel     String
+  isActive         Boolean  @default(true)
+  lastValidatedAt  DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum SubscriptionPlan {
+  FREE
+  SOLO
+  STUDIO
+}
+
+enum SubscriptionStatus {
+  INCOMPLETE
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  workspaceId        String
+  plan               SubscriptionPlan   @default(FREE)
+  status             SubscriptionStatus @default(INCOMPLETE)
+  provider           String             @default("tosspayments")
+  providerCustomerId String?
+  providerBillingKey String?
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
