@@ -198,6 +198,24 @@ Supabase 대시보드 → Storage → **New Bucket** 생성:
 
 ---
 
+### Supabase DB 수동 초기화 (Prisma 없이 설정할 경우)
+
+`sqlinit/` 폴더의 SQL 파일을 Supabase SQL Editor에서 순서대로 실행하세요.
+
+```
+sqlinit/
+├── 01_schema.sql               # 전체 테이블 생성
+├── 02_indexes.sql              # 성능 인덱스
+├── 03_storage.sql              # Storage 버킷 + 정책
+├── 04_agent_skill_assignment.sql  # 에이전트 스킬 배정 테이블
+└── 05_rls_policies.sql         # Row Level Security 설정
+```
+
+> 일반적으로는 `npx prisma db push` 로 스키마 적용이 더 간편합니다.
+> SQL 파일은 Prisma 없이 직접 DB를 초기화하거나 백업 복원 시 사용합니다.
+
+---
+
 ## 📋 주요 명령어
 
 ```bash
