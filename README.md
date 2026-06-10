@@ -265,7 +265,9 @@ User ──── Membership ──── Workspace
 모든 작업은 `GitHub Issue → Branch → Commit → PR` 순서로 진행합니다.
 
 ---
-
+2026년 6월 10일 기준
+아직 업데이트 된 것이 없습니다.
+---
 <div align="center">
 
 **Built with ❤️ using Next.js 15 + AI**
